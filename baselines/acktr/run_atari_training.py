@@ -34,7 +34,8 @@ def train(params):
         'max_score_cutoff': params.exp_max_score,  # What is maximum expert score we can show? Used to cut expert data
         'min_score_cutoff': 20000,                 # What is minimum score to count trajectory as expert
         'process_lost_lifes': True,                # Should loss of life zero future discounted reward?
-        'use_n_trajectories': params.use_n_trajectories if 'use_n_trajectories' in params else None
+        'use_n_trajectories': params.use_n_trajectories if 'use_n_trajectories' in params else None,
+        'demos_path': params.demos_path
     }
 
     the_seed = np.random.randint(10000)
@@ -80,7 +81,9 @@ def train(params):
 
 def main():
     # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    params = atari_arg_parser().parse_args()
+    parser = atari_arg_parser()
+    parser.add_argument("--demos_path", type=str, required=True)
+    params = parser.parse_args()
     logger.configure(dir=cnst.openai_logdir())
     train(params)
 

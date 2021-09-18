@@ -216,7 +216,8 @@ def get_dataflows(config):
     """
     construct and initialize dataflows based on config.
     """
-
+    # print(config)
+    # 1/0
     df = ExpertDataflow(config)
     df = tp_dataflow.PrefetchDataZMQ(df, nr_proc=16)
     df = tp_dataflow.BatchData(df, config['batch_size'], remainder=False)

@@ -141,7 +141,7 @@ class Model(object):
             self.optim = optim = kfac.KfacOptimizer(
                 learning_rate=PG_LR, clip_kl=kfac_clip,
                 momentum=0.9, kfac_update=1, epsilon=0.01,
-                stats_decay=0.99, async=1, cold_iter=20, max_grad_norm=max_grad_norm
+                stats_decay=0.99, assync=1, cold_iter=20, max_grad_norm=max_grad_norm
             )
 
             # why is this unused?

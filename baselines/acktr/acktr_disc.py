@@ -1,12 +1,6 @@
 import joblib
 import numpy as np
 import tensorflow as tf
-from tensorflow import ConfigProto
-from tensorflow import InteractiveSession
-
-config = ConfigProto()
-config.gpu_options.allow_growth = True
-session = InteractiveSession(config=config)
 
 import time
 
@@ -79,174 +73,181 @@ class Runner(object):
         mb_masks = mb_masks.flatten()
         return mb_obs, mb_states, mb_rewards, mb_masks, mb_actions, mb_values
 
+from tensorflow.compat.v1 import ConfigProto
+from tensorflow.compat.v1 import InteractiveSession
 
-class Model(object):
-    def __init__(self, policy, ob_space, ac_space, nenvs,
-                 expert_nbatch,
-                 total_timesteps,
-                 nprocs=32, nsteps=20,
-                 ent_coef=0.01,
-                 vf_coef=0.5, vf_fisher_coef=1.0, vf_expert_coef=0.5 * 0.0,
-                 expert_coeff=1.0,
-                 exp_adv_est='reward',
-                 lr=0.25, max_grad_norm=0.5,
-                 kfac_clip=0.001, lrschedule='linear'):
+config = ConfigProto()
+config.gpu_options.allow_growth = True
+session = InteractiveSession(config=config)
+config.gpu_options.allow_growth = True
 
-        # create tf stuff
-        config = tf.ConfigProto(allow_soft_placement=True,
-                                intra_op_parallelism_threads=nprocs,
-                                inter_op_parallelism_threads=nprocs)
-        config.gpu_options.allow_growth = True
-        self.sess = sess = tf.Session(config=config)
+with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
+    class Model(object):
+        def __init__(self, policy, ob_space, ac_space, nenvs,
+                    expert_nbatch,
+                    total_timesteps,
+                    nprocs=32, nsteps=20,
+                    ent_coef=0.01,
+                    vf_coef=0.5, vf_fisher_coef=1.0, vf_expert_coef=0.5 * 0.0,
+                    expert_coeff=1.0,
+                    exp_adv_est='reward',
+                    lr=0.25, max_grad_norm=0.5,
+                    kfac_clip=0.001, lrschedule='linear'):
 
-        # the actual model
-        nact = ac_space.n
-        nbatch = nenvs * nsteps
-        A = tf.placeholder(tf.int32, [nbatch])
-        A_EXP = tf.placeholder(tf.int32, [expert_nbatch])
-        ADV = tf.placeholder(tf.float32, [nbatch])
-        ADV_EXP = tf.placeholder(tf.float32, [expert_nbatch])
+            # create tf stuff
+            # config = tf.ConfigProto(allow_soft_placement=True,
+            #                         intra_op_parallelism_threads=nprocs,
+            #                         inter_op_parallelism_threads=nprocs)
 
-        R = tf.placeholder(tf.float32, [nbatch])
-        R_EXP = tf.placeholder(tf.float32, [expert_nbatch])
+            self.sess = sess
+            # the actual model
+            nact = ac_space.n
+            nbatch = nenvs * nsteps
+            A = tf.placeholder(tf.int32, [nbatch])
+            A_EXP = tf.placeholder(tf.int32, [expert_nbatch])
+            ADV = tf.placeholder(tf.float32, [nbatch])
+            ADV_EXP = tf.placeholder(tf.float32, [expert_nbatch])
 
-        PG_LR = tf.placeholder(tf.float32, [])
+            R = tf.placeholder(tf.float32, [nbatch])
+            R_EXP = tf.placeholder(tf.float32, [expert_nbatch])
 
-        step_model = policy(sess, ob_space, ac_space, nenvs, 1, reuse=False)
-        eval_step_model = policy(sess, ob_space, ac_space, 1, 1, reuse=True)
-        train_model = policy(sess, ob_space, ac_space, nenvs*nsteps, nsteps, reuse=True)
-        expert_train_model = policy(sess, ob_space, ac_space, expert_nbatch, 1, reuse=True)
-        logpac_expert = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=expert_train_model.pi, labels=A_EXP)
-        logpac = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=train_model.pi, labels=A)
+            PG_LR = tf.placeholder(tf.float32, [])
 
-        _, acc = tf.metrics.accuracy(labels=A,
-                                     predictions=tf.argmax(train_model.pi, 1))
+            step_model = policy(sess, ob_space, ac_space, nenvs, 1, reuse=False)
+            eval_step_model = policy(sess, ob_space, ac_space, 1, 1, reuse=True)
+            train_model = policy(sess, ob_space, ac_space, nenvs*nsteps, nsteps, reuse=True)
+            expert_train_model = policy(sess, ob_space, ac_space, expert_nbatch, 1, reuse=True)
+            logpac_expert = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=expert_train_model.pi, labels=A_EXP)
+            logpac = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=train_model.pi, labels=A)
 
-        ## training loss
-        pg_loss = tf.reduce_mean(ADV*logpac)
-        pg_expert_loss = tf.reduce_mean(ADV_EXP * logpac_expert)
-        entropy = tf.reduce_mean(cat_entropy(train_model.pi))
-        pg_loss = pg_loss - ent_coef * entropy
-        vf_loss = tf.reduce_mean(mse(tf.squeeze(train_model.vf), R))
-        vf_expert_loss = tf.reduce_mean(mse(tf.squeeze(expert_train_model.vf), R_EXP))
-        train_loss = pg_loss + vf_coef * vf_loss + expert_coeff * pg_expert_loss + vf_expert_coef * vf_expert_loss
+            _, acc = tf.metrics.accuracy(labels=A,
+                                        predictions=tf.argmax(train_model.pi, 1))
 
-        self.check = check = tf.add_check_numerics_ops()
+            ## training loss
+            pg_loss = tf.reduce_mean(ADV*logpac)
+            pg_expert_loss = tf.reduce_mean(ADV_EXP * logpac_expert)
+            entropy = tf.reduce_mean(cat_entropy(train_model.pi))
+            pg_loss = pg_loss - ent_coef * entropy
+            vf_loss = tf.reduce_mean(mse(tf.squeeze(train_model.vf), R))
+            vf_expert_loss = tf.reduce_mean(mse(tf.squeeze(expert_train_model.vf), R_EXP))
+            train_loss = pg_loss + vf_coef * vf_loss + expert_coeff * pg_expert_loss + vf_expert_coef * vf_expert_loss
 
-        ## Fisher loss construction
-        pg_fisher_loss = -tf.reduce_mean(logpac)  # + logpac_expert)
-        # pg_expert_fisher_loss = -tf.reduce_mean(logpac_expert)
-        sample_net = train_model.vf + tf.random_normal(tf.shape(train_model.vf))
-        vf_fisher_loss = - vf_fisher_coef * tf.reduce_mean(tf.pow(train_model.vf - tf.stop_gradient(sample_net), 2))
-        joint_fisher_loss = pg_fisher_loss + vf_fisher_loss
+            self.check = check = tf.add_check_numerics_ops()
 
-        params = find_trainable_variables("model")
+            ## Fisher loss construction
+            pg_fisher_loss = -tf.reduce_mean(logpac)  # + logpac_expert)
+            # pg_expert_fisher_loss = -tf.reduce_mean(logpac_expert)
+            sample_net = train_model.vf + tf.random_normal(tf.shape(train_model.vf))
+            vf_fisher_loss = - vf_fisher_coef * tf.reduce_mean(tf.pow(train_model.vf - tf.stop_gradient(sample_net), 2))
+            joint_fisher_loss = pg_fisher_loss + vf_fisher_loss
 
-        self.grads_check = grads = tf.gradients(train_loss, params)
+            params = find_trainable_variables("model")
 
-        with tf.device('/gpu:0'):
-            self.optim = optim = kfac.KfacOptimizer(
-                learning_rate=PG_LR, clip_kl=kfac_clip,
-                momentum=0.9, kfac_update=1, epsilon=0.01,
-                stats_decay=0.99, assync=1, cold_iter=20, max_grad_norm=max_grad_norm
-            )
+            self.grads_check = grads = tf.gradients(train_loss, params)
 
-            # why is this unused?
-            update_stats_op = optim.compute_and_apply_stats(joint_fisher_loss, var_list=params)
-            train_op, q_runner = optim.apply_gradients(list(zip(grads,params)))
-        self.q_runner = q_runner
-        lr = Scheduler(v=lr, nvalues=total_timesteps, schedule=lrschedule)
+            with tf.device('/gpu:0'):
+                self.optim = optim = kfac.KfacOptimizer(
+                    learning_rate=PG_LR, clip_kl=kfac_clip,
+                    momentum=0.9, kfac_update=1, epsilon=0.01,
+                    stats_decay=0.99, assync=1, cold_iter=20, max_grad_norm=max_grad_norm
+                )
 
-        def train(obs, states, rewards, masks, actions, values,
-                  expert_obs, expert_rewards, expert_actions, expert_values):
-            if exp_adv_est == 'critic':
-                expert_advs = np.clip(expert_rewards - expert_values, a_min=0, a_max=None)
-            elif exp_adv_est == 'reward':
-                expert_advs = expert_rewards
-            elif exp_adv_est == 'simple':
-                expert_advs = np.ones_like(expert_rewards)
-            else:
-                raise ValueError("Unknown expert advantage estimator {}".format(exp_adv_est))
+                # why is this unused?
+                update_stats_op = optim.compute_and_apply_stats(joint_fisher_loss, var_list=params)
+                train_op, q_runner = optim.apply_gradients(list(zip(grads,params)))
+            self.q_runner = q_runner
+            lr = Scheduler(v=lr, nvalues=total_timesteps, schedule=lrschedule)
 
-            advs = rewards - values
-            for step in range(len(obs)):
-                cur_lr = lr.value()
+            def train(obs, states, rewards, masks, actions, values,
+                    expert_obs, expert_rewards, expert_actions, expert_values):
+                if exp_adv_est == 'critic':
+                    expert_advs = np.clip(expert_rewards - expert_values, a_min=0, a_max=None)
+                elif exp_adv_est == 'reward':
+                    expert_advs = expert_rewards
+                elif exp_adv_est == 'simple':
+                    expert_advs = np.ones_like(expert_rewards)
+                else:
+                    raise ValueError("Unknown expert advantage estimator {}".format(exp_adv_est))
 
-            td_map = {
-                train_model.X:obs,
-                expert_train_model.X: expert_obs,
-                A_EXP: expert_actions,
-                A:actions,
-                ADV:advs,
-                ADV_EXP: expert_advs,
-                R:rewards,
-                PG_LR:cur_lr,
-                R_EXP: expert_rewards
-            }
+                advs = rewards - values
+                for step in range(len(obs)):
+                    cur_lr = lr.value()
 
-            if states is not None:
-                td_map[train_model.S] = states
-                td_map[train_model.M] = masks
+                td_map = {
+                    train_model.X:obs,
+                    expert_train_model.X: expert_obs,
+                    A_EXP: expert_actions,
+                    A:actions,
+                    ADV:advs,
+                    ADV_EXP: expert_advs,
+                    R:rewards,
+                    PG_LR:cur_lr,
+                    R_EXP: expert_rewards
+                }
 
-            policy_loss, policy_expert_loss, value_loss, policy_entropy, train_accuracy, _, grads_to_check = sess.run(
-                [pg_loss, pg_expert_loss, vf_loss, entropy, acc, train_op, grads],
-                td_map
-            )
+                if states is not None:
+                    td_map[train_model.S] = states
+                    td_map[train_model.M] = masks
 
-            for grad in grads_to_check:
-                if np.isnan(grad).any():
-                    print("ojojoj grad is nan")
+                policy_loss, policy_expert_loss, value_loss, policy_entropy, train_accuracy, _, grads_to_check = sess.run(
+                    [pg_loss, pg_expert_loss, vf_loss, entropy, acc, train_op, grads],
+                    td_map
+                )
 
-            return policy_loss, policy_expert_loss, value_loss, policy_entropy, train_accuracy
+                for grad in grads_to_check:
+                    if np.isnan(grad).any():
+                        print("ojojoj grad is nan")
 
-        def save(save_path):
-            print("Writing model to {}".format(save_path))
-            ps = sess.run(params)
-            joblib.dump(ps, save_path)
+                return policy_loss, policy_expert_loss, value_loss, policy_entropy, train_accuracy
 
-        def load(load_path):
-            loaded_params = joblib.load(load_path)
-            restores = []
-            for p, loaded_p in zip(params, loaded_params):
-                restores.append(p.assign(loaded_p))
-            sess.run(restores)
+            def save(save_path):
+                print("Writing model to {}".format(save_path))
+                ps = sess.run(params)
+                joblib.dump(ps, save_path)
 
-        def eval_step(obs, eval_type):
-            td_map = {eval_step_model.X: [obs]}
-            logits = sess.run(eval_step_model.pi, td_map)[0]
-            if eval_type == 'argmax':
-                act = logits.argmax()
-                if np.random.rand() < 0.01:
-                    act = ac_space.sample()
-                return act
-            elif eval_type == 'prob':
-                # probs = func(s[None, :, :, :])[0][0]
-                x = logits
-                e_x = np.exp(x - np.max(x))
-                probs = e_x / e_x.sum(axis=0)
-                act = np.random.choice(range(probs.shape[-1]), 1, p=probs)[0]
-                return act
-            else:
-                raise ValueError("Unknown eval type {}".format(eval_type))
+            def load(load_path):
+                loaded_params = joblib.load(load_path)
+                restores = []
+                for p, loaded_p in zip(params, loaded_params):
+                    restores.append(p.assign(loaded_p))
+                sess.run(restores)
 
-        self.model = step_model
-        self.model2 = train_model
-        self.expert_train_model = expert_train_model
-        self.vf_fisher = vf_fisher_loss
-        self.pg_fisher = pg_fisher_loss
-        self.joint_fisher = joint_fisher_loss
-        self.params = params
-        self.train = train
-        self.save = save
-        self.load = load
-        self.train_model = train_model
-        self.step_model = step_model
-        self.eval_step = eval_step
-        self.step = step_model.step
-        self.value = step_model.value
-        self.initial_state = step_model.initial_state
-        tf.global_variables_initializer().run(session=sess)
-        tf.local_variables_initializer().run(session=sess)
+            def eval_step(obs, eval_type):
+                td_map = {eval_step_model.X: [obs]}
+                logits = sess.run(eval_step_model.pi, td_map)[0]
+                if eval_type == 'argmax':
+                    act = logits.argmax()
+                    if np.random.rand() < 0.01:
+                        act = ac_space.sample()
+                    return act
+                elif eval_type == 'prob':
+                    # probs = func(s[None, :, :, :])[0][0]
+                    x = logits
+                    e_x = np.exp(x - np.max(x))
+                    probs = e_x / e_x.sum(axis=0)
+                    act = np.random.choice(range(probs.shape[-1]), 1, p=probs)[0]
+                    return act
+                else:
+                    raise ValueError("Unknown eval type {}".format(eval_type))
+
+            self.model = step_model
+            self.model2 = train_model
+            self.expert_train_model = expert_train_model
+            self.vf_fisher = vf_fisher_loss
+            self.pg_fisher = pg_fisher_loss
+            self.joint_fisher = joint_fisher_loss
+            self.params = params
+            self.train = train
+            self.save = save
+            self.load = load
+            self.train_model = train_model
+            self.step_model = step_model
+            self.eval_step = eval_step
+            self.step = step_model.step
+            self.value = step_model.value
+            self.initial_state = step_model.initial_state
+            tf.global_variables_initializer().run(session=sess)
+            tf.local_variables_initializer().run(session=sess)
 
 
 def learn(policy, env, seed, params,

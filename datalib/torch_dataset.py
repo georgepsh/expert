@@ -29,7 +29,7 @@ class DemoDataset(Dataset):
 
 class DemoLoader:
     def __init__(self, dataset, batch_size):
-        self.loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        self.loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
         self.iterator = iter(self.loader)
     
     def __iter__(self):

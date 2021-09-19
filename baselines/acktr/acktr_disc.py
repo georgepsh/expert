@@ -93,11 +93,18 @@ class Model(object):
                  kfac_clip=0.001, lrschedule='linear'):
 
         # create tf stuff
-        config = tf.ConfigProto(allow_soft_placement=True,
-                                intra_op_parallelism_threads=nprocs,
-                                inter_op_parallelism_threads=nprocs)
+        # config = tf.ConfigProto(allow_soft_placement=True,
+        #                         intra_op_parallelism_threads=nprocs,
+        #                         inter_op_parallelism_threads=nprocs)
+        from tensorflow.compat.v1 import ConfigProto
+        from tensorflow.compat.v1 import InteractiveSession
+
+        config = ConfigProto()
         config.gpu_options.allow_growth = True
-        self.sess = sess = tf.Session(config=config)
+        session = InteractiveSession(config=config)
+        config.gpu_options.allow_growth = True
+        
+        self.sess = sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
 
         # the actual model
         nact = ac_space.n

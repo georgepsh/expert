@@ -98,7 +98,12 @@ class Model(object):
         session = InteractiveSession(config=config)
         config.gpu_options.allow_growth = True
         
-        self.sess = sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
+        self.sess = sess = tf.Session(config=tf.ConfigProto(
+            log_device_placement=True, 
+            allow_soft_placement=True,
+            intra_op_parallelism_threads=nprocs,
+            inter_op_parallelism_threads=nprocs
+        ))
 
         # the actual model
         nact = ac_space.n

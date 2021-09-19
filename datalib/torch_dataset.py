@@ -44,7 +44,7 @@ class DemoLoader:
             states, actions, rewards = next(self.iterator)
         except StopIteration:
             self.iterator = iter(self.loader)
-        states, actions, rewards = next(self.iterator)
+            states, actions, rewards = next(self.iterator)
         states = np.transpose(states.cpu().numpy(), axes=(0, 2, 3, 1))
         actions = actions.cpu().numpy()
         rewards = rewards.cpu().numpy()

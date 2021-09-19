@@ -2,6 +2,14 @@
 
 import numpy as np
 
+import tensorflow as tf
+from tensorflow import ConfigProto
+from tensorflow import InteractiveSession
+
+config = ConfigProto()
+config.gpu_options.allow_growth = True
+session = InteractiveSession(config=config)
+
 from baselines import logger
 from baselines.acktr.acktr_disc import learn
 from baselines.acktr.policies import CnnPolicy

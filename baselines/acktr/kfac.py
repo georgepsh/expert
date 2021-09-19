@@ -1,4 +1,5 @@
 import tensorflow as tf
+
 import numpy as np
 import re
 from baselines.acktr.kfac_utils import *
@@ -37,21 +38,30 @@ class KfacOptimizer():
         self._full_stats_init = full_stats_init
         if not self._full_stats_init:
             self._stats_accum_iter = self._cold_iter
+            
+        from tensorflow.compat.v1 import ConfigProto
+        from tensorflow.compat.v1 import InteractiveSession
 
-        self.sgd_step = tf.Variable(0, name='KFAC/sgd_step', trainable=False)
-        self.global_step = tf.Variable(
-            0, name='KFAC/global_step', trainable=False)
-        self.cold_step = tf.Variable(0, name='KFAC/cold_step', trainable=False)
-        self.factor_step = tf.Variable(
-            0, name='KFAC/factor_step', trainable=False)
-        self.stats_step = tf.Variable(
-            0, name='KFAC/stats_step', trainable=False)
-        self.vFv = tf.Variable(0., name='KFAC/vFv', trainable=False)
+        config = ConfigProto()
+        config.gpu_options.allow_growth = True
+        session = InteractiveSession(config=config)
+        config.gpu_options.allow_growth = True
+        
+        with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
+            self.sgd_step = tf.Variable(0, name='KFAC/sgd_step', trainable=False)
+            self.global_step = tf.Variable(
+                0, name='KFAC/global_step', trainable=False)
+            self.cold_step = tf.Variable(0, name='KFAC/cold_step', trainable=False)
+            self.factor_step = tf.Variable(
+                0, name='KFAC/factor_step', trainable=False)
+            self.stats_step = tf.Variable(
+                0, name='KFAC/stats_step', trainable=False)
+            self.vFv = tf.Variable(0., name='KFAC/vFv', trainable=False)
 
-        self.factors = {}
-        self.param_vars = []
-        self.stats = {}
-        self.stats_eigen = {}
+            self.factors = {}
+            self.param_vars = []
+            self.stats = {}
+            self.stats_eigen = {}
 
     def getFactors(self, g, varlist):
         graph = tf.get_default_graph()
